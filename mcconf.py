@@ -1,7 +1,7 @@
 #!/usr/bin/python
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(sys.argv[0]), "../python-libs"))
+sys.path.append(os.path.join(os.path.dirname(sys.argv[0]), "./python-libs"))
 import pytoml as toml
 import logging
 import argparse
