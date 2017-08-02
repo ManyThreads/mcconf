@@ -3,7 +3,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(sys.argv[0]), "./python-libs"))
 import pytoml as toml
-from pathlib import Path
+from pathlib2 import Path
 import logging
 import argparse
 import re
