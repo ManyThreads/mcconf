@@ -15,12 +15,71 @@ from mako.template import Template
 
 MODEXT = '.module'
 
+class ModFile:
+    """represents a source to destination file mapping and is associated to its origin module"""
+
+    def __init__(self, module, filename):
+        self.module = module
+        self.srcname = filename
+        self.dstname = filename
+        self.installMode = 'link'
+
+    def srcfile(self):
+        return os.path.join(self.module.moduledir, self.srcname)
+
+    def dstfile(self):
+        return os.path.join(self.module.dstdir, self.dstname)
+
+    def scanRequires(self):
+        """returns a set(string) with all C/C++ include dependencies"""
+        incrgx = re.compile('#include\\s+[<\\"]([\\w./-]+)[>\\"]')
+        # TODO detect the file type and choose a respective scanner instead
+        # of handling all files as source files
+        includes = set()
+        srcdir = os.path.dirname(self.srcfile())
+        try:
+            with open(self.srcfile()) as fin:
+                for m in incrgx.finditer(fin.read()):
+                    inc = m.group(1)
+                    # if file is locally referenced e.g. 'foo' instead of 'path/to/foo'
+                    # TODO this will break when we begin to rename files during composition
+                    # ie. will have to check if moduledir/inc is one of the modules dstfiles
+                    # would be better, to prohibit this per convention,
+                    # ie "" always relative to sourcefile, <> always relative to the logical root
+                    if os.path.exists(os.path.join(srcdir,inc)):
+                        inc = os.path.relpath(os.path.join(srcdir,inc),
+                                                  self.module.moduledir)
+                    includes.add(inc)
+        except Exception as e:
+            logging.warning("could not load %s from %s: %s", fpath, self.modulefile, e)
+        return includes
+
+    def install(self, tgtdir):
+        srcfile = os.path.abspath(self.srcfile())
+        tgtfile = os.path.abspath(os.path.join(tgtdir, self.dstfile()))
+        logging.debug('installing file %s to %s mode %s', srcfile, tgtfile, self.installMode)
+        if not os.path.exists(os.path.dirname(tgtfile)):
+            os.makedirs(os.path.dirname(tgtfile))
+        if os.path.exists(tgtfile) or os.path.islink(tgtfile):
+            os.unlink(tgtfile)
+
+        if self.installMode=='link':
+            os.symlink(os.path.relpath(srcfile, os.path.dirname(tgtfile)), tgtfile)
+        elif self.installMode=='hardlink':
+            os.link(srcfile, tgtfile)
+        elif self.installMode=='cinclude':
+            with open(tgtfile, 'w') as f:
+                f.write('#include "'+os.path.relpath(srcfile, tgtfile)+'"\n')
+        else: # copy the file
+            shutil.copy2(srcfile, tgtfile)
+
+
 class Module:
     def __init__(self, name, modulefile):
         self.name = name
         self.modulefile = modulefile
         self.moduledir = os.path.dirname(os.path.abspath(self.modulefile))
-        self.destdir = ""
+        self.dstdir = ""
         # files is a dict from file-type (e.g. incfiles, kernelfiles) to a set of filenames
         # TODO should be a dict from dest-name to source name and so on. But need own MFile class for this with a reference to the owning module etc. Then, all module selection code has to be updated as well...
         self.files = dict()
@@ -183,7 +242,7 @@ def parseTomlModule(modulefile):
                 elif field == 'requires': mod.requires = set(fields['requires'])
                 elif field == 'provides': mod.provides = set(fields['provides'])
                 elif field == 'modules': mod.modules = set(fields['modules'])
-                elif field == 'destdir': mod.destdir = fields['destdir']
+                elif field == 'dstdir': mod.dstdir = fields['dstdir']
                 elif field == 'makefile_head': mod.makefile_head = fields['makefile_head']
                 elif field == 'makefile_body': mod.makefile_body = fields['makefile_body']
                 else: mod.extra[field] = fields[field]
@@ -307,9 +366,9 @@ class ModuleDB:
                              require, str(names))
 
 
-def installFile_Softlink(file, srcdir, destdir):
+def installFile_Softlink(file, srcdir, dstdir):
     srcfile = os.path.abspath(srcdir + '/' + file)
-    destfile = os.path.abspath(destdir + '/' + file)
+    destfile = os.path.abspath(dstdir + '/' + file)
     logging.debug('installing file %s to %s', srcfile, destfile)
     if not os.path.exists(os.path.dirname(destfile)):
         os.makedirs(os.path.dirname(destfile))
@@ -317,9 +376,9 @@ def installFile_Softlink(file, srcdir, destdir):
         os.unlink(destfile)
     os.symlink(os.path.relpath(srcfile, os.path.dirname(destfile)), destfile)
 
-def installFile_Hardlink(file, srcdir, destdir):
+def installFile_Hardlink(file, srcdir, dstdir):
     srcfile = os.path.abspath(srcdir + '/' + file)
-    destfile = os.path.abspath(destdir + '/' + file)
+    destfile = os.path.abspath(dstdir + '/' + file)
     logging.debug('installing file %s to %s', srcfile, destfile)
     if not os.path.exists(os.path.dirname(destfile)):
         os.makedirs(os.path.dirname(destfile))
@@ -327,9 +386,9 @@ def installFile_Hardlink(file, srcdir, destdir):
         os.unlink(destfile)
     os.link(srcfile, destfile)
 
-def installFile_Incl(file, srcdir, destdir):
+def installFile_Incl(file, srcdir, dstdir):
     srcfile = os.path.abspath(srcdir + '/' + file)
-    destfile = os.path.abspath(destdir + '/' + file)
+    destfile = os.path.abspath(dstdir + '/' + file)
     logging.debug('installing file %s to %s', srcfile, destfile)
     if not os.path.exists(os.path.dirname(destfile)):
         os.makedirs(os.path.dirname(destfile))
@@ -338,9 +397,9 @@ def installFile_Incl(file, srcdir, destdir):
     with open(destfile, 'w') as f:
         f.write('#include "'+os.path.relpath(srcfile, os.path.dirname(destfile))+'"\n')
 
-def installFile_Copy(file, srcdir, destdir):
+def installFile_Copy(file, srcdir, dstdir):
     srcfile = os.path.abspath(srcdir + '/' + file)
-    destfile = os.path.abspath(destdir + '/' + file)
+    destfile = os.path.abspath(dstdir + '/' + file)
     logging.debug('installing file %s to %s', srcfile, destfile)
     if not os.path.exists(os.path.dirname(destfile)):
         os.makedirs(os.path.dirname(destfile))
@@ -348,8 +407,8 @@ def installFile_Copy(file, srcdir, destdir):
         os.unlink(destfile)
     shutil.copy2(srcfile, destfile)
 
-def installFile(file, srcdir, destdir):
-    return installFile_Softlink(file, srcdir, destdir)
+def installFile(file, srcdir, dstdir):
+    return installFile_Softlink(file, srcdir, dstdir)
 
 def replaceSuffix(str, osuffix, nsuffix):
     return str[:-len(osuffix)] + nsuffix
@@ -361,7 +420,7 @@ class Configuration:
         self.requires = set()
         self.modules = set()
         self.copyfiles = set()
-        self.destdir = '.'
+        self.dstdir = '.'
 
         self.acceptedMods = set() # set of selected module objects
         self.files = dict()
@@ -480,9 +539,9 @@ class Configuration:
                          str(removable))
 
     def buildFileStructure(self):
-        if not os.path.exists(self.destdir):
-            os.makedirs(self.destdir)
-        self.destdir += '/'
+        if not os.path.exists(self.dstdir):
+            os.makedirs(self.dstdir)
+        self.dstdir += '/'
         for file in self.allfiles:
             srcpath = self.allfiles[file].moduledir
             srcfile = srcpath + '/' + file
@@ -492,12 +551,12 @@ class Configuration:
                                 self.allfiles[file].name,
                                 self.allfiles[file].modulefile)
             if file in self.copyfiles:
-                installFile_Hardlink(file, srcpath, self.destdir)
+                installFile_Hardlink(file, srcpath, self.dstdir)
             else:
-                installFile(file, srcpath, self.destdir)
+                installFile(file, srcpath, self.dstdir)
 
     def generateMakefile(self):
-        with open(self.destdir + '/Makefile', 'w') as makefile:
+        with open(self.dstdir + '/Makefile', 'w') as makefile:
             for var in self.files:
                 makefile.write(var + ' = ' + ' '.join(sorted(self.files[var].keys())) + '\n')
                 makefile.write(var + '_OBJ = $(addsuffix .o, $(basename $('+var+')))\n')
@@ -561,7 +620,7 @@ def parseTomlConfiguration(conffile):
             elif field == 'requires': config.requires = set(configf['requires'])
             elif field == 'provides': config.provides = set(configf['provides'])
             elif field == 'modules': config.modules = set(configf['modules'])
-            elif field == 'destdir': config.destdir = os.path.abspath(configf['destdir'])
+            elif field == 'destdir': config.dstdir = os.path.abspath(configf['destdir'])
         return config
 
 
@@ -604,7 +663,7 @@ if __name__ == '__main__':
     config = parseTomlConfiguration(conffile)
 
     if args.destpath is not None:
-        config.destdir = args.destpath
+        config.dstdir = args.destpath
 
     mods = ModuleDB()
     mods.loadModulesFromPaths(config.moduledirs)
@@ -619,7 +678,7 @@ if __name__ == '__main__':
         config.setModuleDB(mods)
         config.processModules(args.depsolve)
         config.buildFileStructure()
-        createConfigurationGraph(config.acceptedMods, config.modules, mods, config.destdir+'/config.dot')
+        createConfigurationGraph(config.acceptedMods, config.modules, mods, config.dstdir+'/config.dot')
         config.generateMakefile()
 
     sys.exit(0)
