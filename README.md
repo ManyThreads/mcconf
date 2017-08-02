@@ -130,3 +130,7 @@ makefile_body = '''
 * the include and source files are copied to the configuration destination using symbolic links and the intermediate directories are created as needed.
 * finally, a makefile is generated based on generic make rules and a list of kernel object files. the 
 kernel object files are retrieved by taking all *.S and *.cc source files and replacing the suffix with *.o.
+
+# Acknowledgements
+
+McConf was initially developed as part of the MyThOS project. It was funded by the Federal Ministry of Education and Research (BMBF) under Grant No. 01IH13003 from October 2013 to September 2016.
