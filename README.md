@@ -1,12 +1,17 @@
-# McConf: The MyThOS Compile Configurator
+# McConf: The Modular Compilation Configurator
 
 McConf is a compile-time configuration management tool for extensible
 software families. Requested target configurations are composed from
 fine grained package descriptions by copying all needed source files
-together into a target-specific hierarchy of folders. This approach is
-designed to enable compile-time dependency injection: Parts of the
-software can depend, for example, on particular files while other
-parts provide alternative implementations of these files.
+into the target directory. This approach is designed to enable compile-time
+dependency injection: Modules can depend, for example, on particular
+files and other modules can provide alternative implementations of
+these files.
+
+After composing the source, a Makefile is generated which can be used
+to build the configured target. 
+
+## Background
 
 Traditional library-based software composition works by linking
 previously compiled files and libraries into the target
@@ -14,6 +19,10 @@ executable. Dependencies between such libraries and configuration
 options quickly lead to a large number of differently configured
 library variants. In contrast, McConf jumps into action before
 anything is compiled.
+
+McConf has similar objectives as [cargo](http://doc.crates.io/) for the
+rust language. However, McConf is targeted to C++ codes with a large
+number of rather small modules, typically just a few source files.
 
 ## Using McConf
 
