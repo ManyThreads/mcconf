@@ -4,8 +4,9 @@ incfiles = [ "a.h", 'subdir/b.h'] # all exported header files, used during and a
 requires = [ "x86",'mem'] # symbols, files, pseudo modules required by this module
 provides = [ "gdt"] # symbols and pseudo modules provided by this module. Files not needed because srcfiles and incfiles is added to the provides 
 modules  = [ ]
+## escape % as first character on a line for the mako template engine!
 makefile_body = '''
-%.o: %.cc
+${"%.o: %.cc"}
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(DEPFLAGS) -c -o $@ $<
 '''
 makefile_head = ''
@@ -16,3 +17,6 @@ incfiles = [ 'c.h']
 requires = [ 'mem']
 provides = [ ]
 modules = [ ]
+
+[module.glob]
+srcfiles = ["*.cc", "*/*.cc"]

@@ -3,6 +3,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(sys.argv[0]), "./python-libs"))
 import pytoml as toml
+from pathlib import Path
 import logging
 import argparse
 import re
@@ -18,6 +19,7 @@ class Module:
     def __init__(self, name, modulefile):
         self.name = name
         self.modulefile = modulefile
+        self.moduledir = os.path.dirname(os.path.abspath(self.modulefile))
         self.destdir = ""
         # files is a dict from file-type (e.g. incfiles, kernelfiles) to a set of filenames
         # TODO should be a dict from dest-name to source name and so on. But need own MFile class for this with a reference to the owning module etc. Then, all module selection code has to be updated as well...
@@ -45,10 +47,9 @@ class Module:
 
     def findRequiredIncludes(self, files):
         incrgx = re.compile('#include\\s+[<\\"]([\\w./-]+)[>\\"]')
-        basedir = os.path.dirname(os.path.abspath(self.modulefile))
         includes = set()
         for f in files:
-            fpath = basedir+'/'+f
+            fpath = self.moduledir+'/'+f
             try:
                 with open(fpath) as fin:
                     content = fin.read()
@@ -56,7 +57,7 @@ class Module:
                         inc = m.group(1)
                         # if file is locally referenced e.g. 'foo' instead of 'path/to/foo'
                         if os.path.exists(os.path.dirname(fpath)+'/'+inc):
-                            inc = os.path.relpath(os.path.dirname(fpath)+'/'+inc, basedir)
+                            inc = os.path.relpath(os.path.dirname(fpath)+'/'+inc, self.moduledir)
                         includes.add(inc)
             except Exception as e:
                 logging.warning("could not load %s from %s: %s", fpath, self.modulefile, e)
@@ -150,6 +151,24 @@ def createConfigurationGraph(modules, selectedmods, moddb, filename):
 
     graph.write(filename)
 
+def searchFiles(basedir, extension):
+    files = list()
+    if basedir[-1:] != '/': basedir += '/'
+    for f in os.listdir(basedir):
+        fname = basedir + f
+        if os.path.isdir(fname):
+            files.extend(searchFiles(fname, extension))
+        elif f.endswith(extension):
+            files.append(fname)
+    return files
+    
+def searchFilesPatternSet(basedir, patterns):
+    files = set()
+    path = Path(basedir)
+    for pattern in patterns:
+        files.update([m.relative_to(basedir).as_posix() for m in path.glob(pattern)])
+    return files    
+    
 def parseTomlModule(modulefile):
     modules = list()
     with open(modulefile, 'r') as f:
@@ -158,7 +177,8 @@ def parseTomlModule(modulefile):
             fields = content['module'][name]
             mod = Module(name, modulefile)
             for field in fields:
-                if field.endswith('files'): mod.files[field.upper()] = set(fields[field])
+                if field.endswith('files'):
+                    mod.files[field.upper()] = searchFilesPatternSet(mod.moduledir,fields[field])
                 elif field == 'copy': mod.copyfiles = set(fields['copy'])
                 elif field == 'requires': mod.requires = set(fields['requires'])
                 elif field == 'provides': mod.provides = set(fields['provides'])
@@ -171,18 +191,6 @@ def parseTomlModule(modulefile):
             mod.init()
             modules.append(mod)
     return modules
-
-def searchFiles(basedir, extension):
-    files = list()
-    if basedir[-1:] != '/': basedir += '/'
-    for f in os.listdir(basedir):
-        fname = basedir + f
-        if os.path.isdir(fname):
-            files.extend(searchFiles(fname, extension))
-        elif f.endswith(extension):
-            files.append(fname)
-    return files
-
 
 
 class ModuleDB:
@@ -476,7 +484,7 @@ class Configuration:
             os.makedirs(self.destdir)
         self.destdir += '/'
         for file in self.allfiles:
-            srcpath = os.path.dirname(self.allfiles[file].modulefile)
+            srcpath = self.allfiles[file].moduledir
             srcfile = srcpath + '/' + file
             if not os.path.isfile(srcfile):
                 logging.warning('file %s is missing or not regular file, provided by %s from %s',
