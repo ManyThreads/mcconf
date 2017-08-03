@@ -128,8 +128,8 @@ class Module:
         self.moduledir = os.path.dirname(os.path.abspath(self.modulefile))
         self.dstdir = ""
         self.files = dict()
-        self.requires = set()
-        self.provides = set()
+        self._requires = set()
+        self._provides = set()
         self.modules = set()
         self.copyfiles = set()
         self.makefile_head = None
@@ -143,14 +143,14 @@ class Module:
     def addFiles(self, role, names):
         if role not in self.files: self.files[role] = list()
         self.files[role] += [ModFile(self, name) for name in names]
-        # TODO check for duplicate destination files somewhere ?
 
-    # TODO convert into a property and hide the internal difference between requires from the module and from the files
-    def getRequires(self):
-        return self.requires | self.requiredFiles
+    @property
+    def requires(self): return self._requires | self.requiredFiles
+    def addRequires(self, s): self._requires.update(s)
 
-    def getProvides(self):
-        return self.provides | self.providedFiles
+    @property
+    def provides(self): return self._provides | self.providedFiles
+    def addProvides(self, s): self._provides.update(s)
 
     def finish(self):
         """finish the initialization of the module after all fields are set."""
@@ -174,8 +174,8 @@ def parseTomlModule(modulefile):
                 if field.endswith('files'):
                     mod.addFiles(field.upper(), findFiles(mod.moduledir, fields[field]))
                 elif field == 'copy': mod.copyfiles = set(fields['copy'])
-                elif field == 'requires': mod.requires = set(fields['requires'])
-                elif field == 'provides': mod.provides = set(fields['provides'])
+                elif field == 'requires': mod.addRequires(fields['requires'])
+                elif field == 'provides': mod.addProvides(fields['provides'])
                 elif field == 'modules': mod.modules = set(fields['modules'])
                 elif field == 'dstdir': mod.dstdir = fields['dstdir']
                 elif field == 'makefile_head': mod.makefile_head = fields['makefile_head']
@@ -199,10 +199,10 @@ class ModuleDB:
         if mod.name not in self.modules:
             logging.debug('loaded %s from %s', mod.name, mod.modulefile)
             self.modules[mod.name] = mod
-            for tag in mod.getProvides(): # this tag is provided by that module
+            for tag in mod.provides: # this tag is provided by that module
                 if tag not in self.provides: self.provides[tag] = set()
                 self.provides[tag].add(mod)
-            for tag in mod.getRequires(): # this tag is required by that module
+            for tag in mod.requires: # this tag is required by that module
                 if tag not in self.requires: self.requires[tag] = set()
                 self.requires[tag].add(mod)
         else:
@@ -224,7 +224,7 @@ class ModuleDB:
 
     def isResolvable(self, mod, provided):
         """ Test whether there is a chance that the dependency are resolvable. """
-        for req in mod.getRequires():
+        for req in mod.requires:
             if not (req in provided or len(self.getProvides(req))):
                 logging.warning('Discarded module %s because of unresolvable dependency on %s', mod.name, req)
                 return False
@@ -246,7 +246,7 @@ class ModuleDB:
         """Find all modules that satisfy at least one dependency of the module.
         Returns a dictionary mapping modules to the tags they would satisfy."""
         dstmods = dict()
-        for req in mod.getRequires():
+        for req in mod.requires:
             for dst in self.getProvides(req):
                 if dst not in dstmods: dstmods[dst] = set()
                 dstmods[dst].add(req)
@@ -256,7 +256,7 @@ class ModuleDB:
         """inefficient method to find all modules that are in conflict with the given one.
         Returns a dictionary mapping modules to the conflicting tags."""
         dstmods = dict()
-        for prov in mod.getProvides():
+        for prov in mod.provides:
             for dst in self.getProvides(prov):
                 if dst.name == mod.name: continue
                 if dst not in dstmods: dstmods[dst] = set()
@@ -322,7 +322,7 @@ class Configuration:
             if mod in self.acceptedMods: continue
             # 3) error if conflict with previously selected module
             # conflict if one of the provides is already provided
-            conflicts = self.provides & mod.getProvides()
+            conflicts = self.provides & mod.provides
             if conflicts:
                 for tag in conflicts:
                     conflictMods = self.modDB.getProvides(tag) & self.acceptedMods
@@ -341,8 +341,8 @@ class Configuration:
             logging.debug('selecting module %s', mod.name)
             self.acceptedMods.add(mod)
             pendingMods |= mod.modules
-            self.requires |= mod.getRequires()
-            self.provides |= mod.getProvides()
+            self.requires |= mod.requires
+            self.provides |= mod.provides
             for role in mod.files:
                 for mf in mod.files[role]:
                     if mf.dstfile in self.allfiles:
@@ -385,7 +385,7 @@ class Configuration:
                 if len(solutions) != 1: continue
                 mod = solutions.pop()
                 # 2) ignore if conflict with already selected modules
-                conflicts = self.provides & mod.getProvides()
+                conflicts = self.provides & mod.provides
                 if conflicts: continue
                 # select the module
                 logging.debug('Satisfy dependency %s with module %s', tag, mod.name)
@@ -405,7 +405,7 @@ class Configuration:
             if conflictMods: continue
             # 2) modules that do not satisfy any dependency should be selected
             providesAnything = False
-            for tag in mod.getProvides():
+            for tag in mod.provides:
                 if self.modDB.getRequires(tag) & selected:
                     providesAnything = True
             if not providesAnything: continue
@@ -496,7 +496,7 @@ def createModulesGraph(moddb):
 
     # add modules as nodes
     for mod in moddb.getModules():
-        tt = ", ".join(mod.getProvides()) + " "
+        tt = ", ".join(mod.provides) + " "
         node = pydot.Node(mod.name, tooltip=tt)
         nodes[mod.name] = node
         graph.add_node(node)
@@ -534,7 +534,7 @@ def createConfigurationGraph(modules, selectedmods, moddb, filename):
 
     # add modules as nodes
     for mod in modules:
-        tt = ", ".join(mod.getProvides()) + " "
+        tt = ", ".join(mod.provides) + " "
         if mod.name in selectedmods:
             fc = "#BEF781"
         else:
