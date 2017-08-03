@@ -472,7 +472,7 @@ class Configuration:
             makefile.write("ifneq ($(MAKECMDGOALS),clean)\n")
             makefile.write("ifneq ($(MAKECMDGOALS),cleanall)\n")
             makefile.write("-include $(DEP)\n")
-            makefile.write("endif\nendif\n\n")
+            makefile.write("endif\nendif\n")
 
 def parseTomlConfiguration(conffile):
     with open(conffile, 'r') as fin:
