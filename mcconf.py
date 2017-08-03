@@ -10,8 +10,8 @@ import re
 #import pydotplus.graphviz as pydot
 import pydot
 import shutil
-
-from mako.template import Template
+import mako.template
+import mako.runtime
 
 def findFiles(basedir, patterns):
     """find files relative to a base directory according to a list of patterns.
@@ -37,12 +37,16 @@ class ModFile:
     """
 
     def __init__(self, module, filename):
+        self.installMode = 'link'
         self.module = module
         self.srcname = filename
         self.srcfile = os.path.join(self.module.moduledir, self.srcname)
-        dstname = filename # TODO do rewriting for template files
-        self.dstfile = os.path.join(self.module.dstdir, dstname)
-        self.installMode = 'link'
+        dstpath = os.path.join(self.module.dstdir, os.path.dirname(filename))
+        dstname = os.path.basename(filename)
+        if dstname.startswith("mako_"):
+            self.installMode = 'mako'
+            dstname = dstname[len("mako_"):]
+        self.dstfile = os.path.join(dstpath, dstname) 
 
     def __repr__(self): return self.dstfile
         
@@ -72,7 +76,7 @@ class ModFile:
             logging.warning("could not load %s from %s: %s", fpath, self.modulefile, e)
         return includes
 
-    def install(self, tgtdir):
+    def install(self, tgtdir, tmplenv):
         """install the file into the target directory."""
         srcfile = os.path.abspath(self.srcfile)
         tgtfile = os.path.abspath(os.path.join(tgtdir, self.dstfile))
@@ -89,7 +93,6 @@ class ModFile:
         if os.path.exists(tgtfile) or os.path.islink(tgtfile):
             os.unlink(tgtfile)
             
-        # TODO add template installation
         if self.installMode=='link':
             os.symlink(os.path.relpath(srcfile, os.path.dirname(tgtfile)), tgtfile)
         elif self.installMode=='hardlink':
@@ -97,6 +100,11 @@ class ModFile:
         elif self.installMode=='cinclude':
             with open(tgtfile, 'w') as f:
                 f.write('#include "'+os.path.relpath(srcfile, tgtfile)+'"\n')
+        elif self.installMode=='mako':
+            with open(tgtfile, 'w') as f:
+                tmpl = mako.template.Template(filename=self.srcfile)
+                ctx = mako.runtime.Context(f, **tmplenv)
+                tmpl.render_context(ctx)
         else: # copy the file
             shutil.copy2(srcfile, tgtfile)
 
@@ -202,19 +210,6 @@ class ModuleDB:
                             mod.name, mod.modulefile,
                             self.modules[mod.name].filename)
 
-    def addModules(self, mods):
-        for mod in mods: self.addModule(mod)
-
-    # TODO move outside just like paseTomlModule()
-    def loadModulesFromPaths(self, paths):
-        for path in paths:
-            for f in findFiles(path, ["**/*.module", "**/mcconf.toml", "**/*.mcconf"]):
-                try:
-                  self.addModules(parseTomlModule(os.path.join(path,f)))
-                except:
-                  logging.error('parsing  modulefile %s failed', f)
-                  raise
-
     def __getitem__(self,index):
         return self.modules[index]
 
@@ -281,10 +276,20 @@ class ModuleDB:
         unsat = requires - provides
         if unsat != set():
             for require in unsat:
-                mods = self.getRequires(require)
-                names = [m.name+'('+m.modulefile+')' for m in mods]
+                names = [m.name+'('+m.modulefile+')' for m in self.getRequires(require)]
                 logging.info('Tag %s required by %s not provided by any module',
                              require, str(names))
+
+
+def loadModules(moddb, paths):
+    for path in paths:
+        for f in findFiles(path, ["**/*.module", "**/mcconf.toml", "**/*.mcconf"]):
+            try:
+                for mod in parseTomlModule(os.path.join(path,f)): moddb.addModule(mod)
+            except:
+                logging.error('parsing  modulefile %s failed', f)
+                raise
+
 
 
 def replaceSuffix(str, osuffix, nsuffix):
@@ -302,10 +307,7 @@ class Configuration:
         self.files = dict() # dict role -> dict dstfile -> ModFile
         self.allfiles = dict() # dict dstfile -> ModFile
         self.vars = dict()
-        self.mods = None
-
-    def setModuleDB(self, mods):
-        self.mods = mods
+        self.modDB = ModuleDB()
 
     def applyModules(self, pendingMods):
         '''add all modules of the list to the configuration, including referenced modules'''
@@ -313,23 +315,23 @@ class Configuration:
         while len(pendingMods) > 0:
             modname = pendingMods.pop()
             # 1) error if module not available
-            if not self.mods.has(modname):
+            if not self.modDB.has(modname):
                 raise Exception("Didn't find module " + modname)
             # 2) ignore if module already selected
-            mod = self.mods[modname]
+            mod = self.modDB[modname]
             if mod in self.acceptedMods: continue
             # 3) error if conflict with previously selected module
             # conflict if one of the provides is already provided
             conflicts = self.provides & mod.getProvides()
             if conflicts:
                 for tag in conflicts:
-                    conflictMods = self.mods.getProvides(tag) & self.acceptedMods
+                    conflictMods = self.modDB.getProvides(tag) & self.acceptedMods
                     cnames = [m.name for m in conflictMods]
                     logging.warning("requested module %s tag %s conflicts with %s",
                                     mod.name, tag, str(cnames))
                     raise Exception("requested module " + modname +
                                     " conflicts with previously selected modules")
-            # conflictMods = self.mods.getConflictingModules(mod)
+            # conflictMods = self.modDB.getConflictingModules(mod)
             # conflicts = conflictMods.keys() & self.acceptedMods
             # if conflicts:
             #     # TODO add more diagnostigs: which tags/files do conflict?
@@ -365,9 +367,9 @@ class Configuration:
 
         missingRequires = self.getMissingRequires()
         for tag in missingRequires:
-            reqMods = self.mods.getRequires(tag) & self.acceptedMods
+            reqMods = self.modDB.getRequires(tag) & self.acceptedMods
             req = [m.name for m in reqMods]
-            prov = [m.name for m in self.mods.getProvides(tag)]
+            prov = [m.name for m in self.modDB.getProvides(tag)]
             logging.warning('unresolved dependency %s required by [%s] provided by [%s]',
                             tag, ', '.join(req), ', '.join(prov))
 
@@ -378,7 +380,7 @@ class Configuration:
         while count:
             count = 0
             for tag in missingRequires:
-                solutions = self.mods.getResolvableProvides(tag, self.provides).copy()
+                solutions = self.modDB.getResolvableProvides(tag, self.provides).copy()
                 # 1) ignore if none or multiple solutions
                 if len(solutions) != 1: continue
                 mod = solutions.pop()
@@ -395,16 +397,16 @@ class Configuration:
         return additionalMods
 
     def checkConsistency(self):
-        selected = set([self.mods[n] for n in self.modules])
+        selected = set([self.modDB[n] for n in self.modules])
         removable = set()
         for mod in selected:
             # 1) modules with conflicts should be selected
-            conflictMods = self.mods.getConflictingModules(mod)
+            conflictMods = self.modDB.getConflictingModules(mod)
             if conflictMods: continue
             # 2) modules that do not satisfy any dependency should be selected
             providesAnything = False
             for tag in mod.getProvides():
-                if self.mods.getRequires(tag) & selected:
+                if self.modDB.getRequires(tag) & selected:
                     providesAnything = True
             if not providesAnything: continue
             # remember all other modules
@@ -413,11 +415,13 @@ class Configuration:
             logging.info("following modules could be resolved automatically: %s",
                          str(removable))
 
-    def buildFileStructure(self):
-        if not os.path.exists(self.dstdir): os.makedirs(self.dstdir)
-        for mf in self.allfiles.itervalues(): mf.install(self.dstdir)
+    def install(self):
+        tmplenv = {"vars": argparse.Namespace(**self.vars), "modules": self.acceptedMods,
+                   "files": self.files, "allfiles":self.allfiles}
 
-    def generateMakefile(self):
+        if not os.path.exists(self.dstdir): os.makedirs(self.dstdir)
+        for mf in self.allfiles.itervalues(): mf.install(self.dstdir, tmplenv)
+
         with open(self.dstdir + '/Makefile', 'w') as makefile:
             for var in self.files:
                 makefile.write(var + ' = ' + ' '.join(sorted(self.files[var].keys())) + '\n')
@@ -434,8 +438,8 @@ class Configuration:
 
             for mod in self.acceptedMods:
                 if mod.makefile_head != None:
-                    tmpl = Template(mod.makefile_head)
-                    makefile.write(tmpl.render(**config.vars))
+                    tmpl = mako.template.Template(mod.makefile_head)
+                    makefile.write(tmpl.render(**tmplenv))
                     makefile.write("\n")
             makefile.write("\n")
 
@@ -443,8 +447,8 @@ class Configuration:
 
             for mod in self.acceptedMods:
                 if mod.makefile_body != None:
-                    tmpl = Template(mod.makefile_body)
-                    makefile.write(tmpl.render(**config.vars))
+                    tmpl = mako.template.Template(mod.makefile_body)
+                    makefile.write(tmpl.render(**tmplenv))
                     makefile.write("\n")
 
             for var in self.files:
@@ -476,14 +480,14 @@ def parseTomlConfiguration(conffile):
         configf = configf['config']
         config = Configuration()
         for field in configf:
-            if field == 'vars': config.vars = configf[field]
+            if field == 'vars': config.vars.update(configf[field])
             elif field == 'moduledirs': config.moduledirs = list(configf['moduledirs'])
-            elif field == 'requires': config.requires = set(configf['requires'])
-            elif field == 'provides': config.provides = set(configf['provides'])
-            elif field == 'modules': config.modules = set(configf['modules'])
+            elif field == 'requires': config.requires.update(configf['requires'])
+            elif field == 'provides': config.provides.update(configf['provides'])
+            elif field == 'modules': config.modules.update(configf['modules'])
             elif field == 'destdir': config.dstdir = os.path.abspath(configf['destdir'])
+        loadModules(config.modDB, config.moduledirs)
         return config
-
 
 
 def createModulesGraph(moddb):
@@ -576,7 +580,7 @@ if __name__ == '__main__':
     parser.add_argument("--check", action = 'store_true')
     parser.add_argument('-v', "--verbose", action = 'store_true')
     parser.add_argument('-g', "--modulegraph", action = 'store_true')
-    parser.add_argument("--depsolve", help = 'Tries to resolve unsatisfied requirements by adding modules from the search path.', action = 'store_true')
+    parser.add_argument("--nodepsolve", help = 'disables the solver', action = 'store_true')
     args = parser.parse_args()
 
     if args.destpath is not None:
@@ -609,20 +613,15 @@ if __name__ == '__main__':
     if args.destpath is not None:
         config.dstdir = args.destpath
 
-    mods = ModuleDB()
-    mods.loadModulesFromPaths(config.moduledirs)
-
     if(args.check):
-        mods.checkConsistency()
-        config.setModuleDB(mods)
+        config.modDB.checkConsistency()
         config.checkConsistency()
-    elif(args.modulegraph):
-        createModulesGraph(mods)
     else:
-        config.setModuleDB(mods)
-        config.processModules(args.depsolve)
-        config.buildFileStructure()
-        createConfigurationGraph(config.acceptedMods, config.modules, mods, config.dstdir+'/config.dot')
-        config.generateMakefile()
+        config.processModules(not args.nodepsolve)
+        config.install()
+
+    if args.modulegraph:
+        createModulesGraph(config.modDB)
+        createConfigurationGraph(config.acceptedMods, config.modules, config.modDB, config.dstdir+'/config.dot')
 
     sys.exit(0)
