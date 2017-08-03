@@ -412,72 +412,20 @@ class Configuration:
                          str(removable))
 
     def install(self):
+        tmplenv = {"vars": argparse.Namespace(**self.vars), "modules": self.acceptedMods,
+                   "files": self.files, "allfiles":self.allfiles,
+        }
+        tmplenv['replaceSuffix'] = lambda str, osuf, nsuf: str[:-len(osuf)] + nsuf
         def tmplIncludeModules(var, ctx):
             for mod in ctx["modules"]:
                 if var in mod.vars:
                     mako.template.Template(mod.vars[var]).render_context(ctx)
             return ''
-
-        tmplenv = {"vars": argparse.Namespace(**self.vars), "modules": self.acceptedMods,
-                   "files": self.files, "allfiles":self.allfiles,
-        }
-        tmplenv['replaceSuffix'] = lambda str, osuf, nsuf: str[:-len(osuf)] + nsuf
         tmplenv['includeModules'] = tmplIncludeModules
 
         if not os.path.exists(self.dstdir): os.makedirs(self.dstdir)
         for k in self.allfiles: self.allfiles[k].install(self.dstdir, tmplenv)
 
-        with open(self.dstdir + '/Makefile', 'w') as makefile:
-            for var in self.files:
-                makefile.write(var + ' = ' + ' '.join(sorted(self.files[var].keys())) + '\n')
-                makefile.write(var + '_OBJ = $(addsuffix .o, $(basename $('+var+')))\n')
-                makefile.write('DEP += $(addsuffix .d, $(basename $('+var+')))\n')
-            makefile.write("\n")
-
-            makefile.write("DEPFLAGS += -MP -MMD -pipe\n")
-            # makefile.write("DEP := $(addsuffix .d, $(basename")
-            # for var in self.files: makefile.write(" $("+var+")")
-            # makefile.write("))\n\n")
-
-            makefile.write(".PHONY: all clean cleanall\n\n")
-
-            for mod in self.acceptedMods:
-                if 'makefile_head' in mod.vars:
-                    tmpl = mako.template.Template(mod.vars['makefile_head'])
-                    makefile.write(tmpl.render(**tmplenv))
-                    makefile.write("\n")
-            makefile.write("\n")
-
-            makefile.write("all: $(TARGETS)\n\n")
-
-            for mod in self.acceptedMods:
-                if 'makefile_body' in mod.vars:
-                    tmpl = mako.template.Template(mod.vars['makefile_body'])
-                    makefile.write(tmpl.render(**tmplenv))
-                    makefile.write("\n")
-
-            for var in self.files:
-                vprefix = replaceSuffix(var, "FILES", "_")
-                for f in sorted(self.files[var].keys()):
-                    if f.endswith(".cc"):
-                        makefile.write(replaceSuffix(f,".cc",".o")+": "+f+"\n")
-                        makefile.write("\t$("+vprefix+"CXX) $("+vprefix+"CXXFLAGS) $("+vprefix+"CPPFLAGS) $(DEPFLAGS) -c -o $@ $<\n")
-                    if f.endswith(".S"):
-                        makefile.write(replaceSuffix(f,".S",".o")+": "+f+"\n")
-                        makefile.write("\t$("+vprefix+"AS) $("+vprefix+"ASFLAGS) $("+vprefix+"CPPFLAGS) $(DEPFLAGS) -c -o $@ $<\n")
-            makefile.write("\n")
-
-
-            makefile.write("clean:\n")
-            for var in self.files:
-                makefile.write("\t- $(RM) $("+var+"_OBJ)\n")
-            makefile.write("\t- $(RM) $(TARGETS) $(EXTRATARGETS)\n\n")
-
-            makefile.write("cleanall: clean\n\t- $(RM) $(DEP)\n\n")
-            makefile.write("ifneq ($(MAKECMDGOALS),clean)\n")
-            makefile.write("ifneq ($(MAKECMDGOALS),cleanall)\n")
-            makefile.write("-include $(DEP)\n")
-            makefile.write("endif\nendif\n")
 
 def parseTomlConfiguration(conffile):
     with open(conffile, 'r') as fin:
@@ -493,6 +441,7 @@ def parseTomlConfiguration(conffile):
             elif field == 'destdir': config.dstdir = os.path.abspath(configf['destdir'])
         loadModules(config.modDB, config.moduledirs)
         return config
+
 
 
 def createModulesGraph(moddb):
