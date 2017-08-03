@@ -1,5 +1,6 @@
 [module.moda]
 srcfiles = [ "a.cc"] # all source files of the modules used during compilation
+copy = ["a.cc"] # always copy instead of symlink this file
 incfiles = [ "a.h", 'subdir/b.h'] # all exported header files, used during and after compilation
 requires = [ "x86",'mem'] # symbols, files, pseudo modules required by this module
 provides = [ "gdt"] # symbols and pseudo modules provided by this module. Files not needed because srcfiles and incfiles is added to the provides 
