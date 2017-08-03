@@ -86,6 +86,7 @@ class ModFile:
 
         if not os.path.exists(os.path.dirname(tgtfile)):
             os.makedirs(os.path.dirname(tgtfile))
+        # TODO ideally we should never overwrite files, reconfig run should delete previously installed files
         if os.path.exists(tgtfile) or os.path.islink(tgtfile):
             os.unlink(tgtfile)
             
@@ -585,6 +586,7 @@ if __name__ == '__main__':
     # configure the logging
     logFormatter = logging.Formatter("%(message)s")
     rootLogger = logging.getLogger()
+    os.unlink(args.configfile+'.log')
     fileHandler = logging.FileHandler(args.configfile+'.log')
     fileHandler.setFormatter(logFormatter)
     fileHandler.setLevel(logging.DEBUG)
