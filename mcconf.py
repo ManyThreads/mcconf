@@ -29,7 +29,7 @@ class ModFile:
 
     Attributes:
         module  the module this file belongs to, used for path resolution.
-        srcname the path to the source file as given in the module definition, 
+        srcname the path to the source file as given in the module definition,
                 relative to the module file.
         srcfile the absolute path to the source file.
         dstfile the relative path to the destination file, relative to the target root.
@@ -46,10 +46,10 @@ class ModFile:
         if dstname.startswith("mako_"):
             self.installMode = 'mako'
             dstname = dstname[len("mako_"):]
-        self.dstfile = os.path.join(dstpath, dstname) 
+        self.dstfile = os.path.join(dstpath, dstname)
 
     def __repr__(self): return self.dstfile
-        
+
     @property
     def dependencies(self):
         """a list(string) with all C/C++ include dependencies"""
@@ -92,7 +92,7 @@ class ModFile:
         # TODO ideally we should never overwrite files, reconfig run should delete previously installed files
         if os.path.exists(tgtfile) or os.path.islink(tgtfile):
             os.unlink(tgtfile)
-            
+
         if self.installMode=='link':
             os.symlink(os.path.relpath(srcfile, os.path.dirname(tgtfile)), tgtfile)
         elif self.installMode=='hardlink':
@@ -132,14 +132,12 @@ class Module:
         self._provides = set()
         self.modules = set()
         self.copyfiles = set()
-        self.makefile_head = None
-        self.makefile_body = None
-        self.extra = dict() # all unknown fields from the configuration
+        self.vars = dict() # all unknown fields from the configuration
         self.providedFiles = set()
         self.requiredFiles = set()
 
     def __repr__(self): return self.name
-        
+
     def addFiles(self, role, names):
         if role not in self.files: self.files[role] = list()
         self.files[role] += [ModFile(self, name) for name in names]
@@ -160,7 +158,7 @@ class Module:
                 self.requiredFiles.update(m.dependencies)
                 if m.srcname in self.copyfiles: m.installMode = 'copy'
         self.requiredFiles -= self.providedFiles
-    
+
 
 def parseTomlModule(modulefile):
     """parses a mcconf module file and returns a list(Module)."""
@@ -178,9 +176,7 @@ def parseTomlModule(modulefile):
                 elif field == 'provides': mod.addProvides(fields['provides'])
                 elif field == 'modules': mod.modules = set(fields['modules'])
                 elif field == 'dstdir': mod.dstdir = fields['dstdir']
-                elif field == 'makefile_head': mod.makefile_head = fields['makefile_head']
-                elif field == 'makefile_body': mod.makefile_body = fields['makefile_body']
-                else: mod.extra[field] = fields[field]
+                else: mod.vars[field] = fields[field]
             #mod.provides.add(name) # should not require specific modules, use 'modules' instead
             mod.finish()
             modules.append(mod)
@@ -416,8 +412,17 @@ class Configuration:
                          str(removable))
 
     def install(self):
+        def tmplIncludeModules(var, ctx):
+            for mod in ctx["modules"]:
+                if var in mod.vars:
+                    mako.template.Template(mod.vars[var]).render_context(ctx)
+            return ''
+
         tmplenv = {"vars": argparse.Namespace(**self.vars), "modules": self.acceptedMods,
-                   "files": self.files, "allfiles":self.allfiles}
+                   "files": self.files, "allfiles":self.allfiles,
+        }
+        tmplenv['replaceSuffix'] = lambda str, osuf, nsuf: str[:-len(osuf)] + nsuf
+        tmplenv['includeModules'] = tmplIncludeModules
 
         if not os.path.exists(self.dstdir): os.makedirs(self.dstdir)
         for k in self.allfiles: self.allfiles[k].install(self.dstdir, tmplenv)
@@ -437,8 +442,8 @@ class Configuration:
             makefile.write(".PHONY: all clean cleanall\n\n")
 
             for mod in self.acceptedMods:
-                if mod.makefile_head != None:
-                    tmpl = mako.template.Template(mod.makefile_head)
+                if 'makefile_head' in mod.vars:
+                    tmpl = mako.template.Template(mod.vars['makefile_head'])
                     makefile.write(tmpl.render(**tmplenv))
                     makefile.write("\n")
             makefile.write("\n")
@@ -446,8 +451,8 @@ class Configuration:
             makefile.write("all: $(TARGETS)\n\n")
 
             for mod in self.acceptedMods:
-                if mod.makefile_body != None:
-                    tmpl = mako.template.Template(mod.makefile_body)
+                if 'makefile_body' in mod.vars:
+                    tmpl = mako.template.Template(mod.vars['makefile_body'])
                     makefile.write(tmpl.render(**tmplenv))
                     makefile.write("\n")
 
@@ -589,8 +594,9 @@ if __name__ == '__main__':
     # configure the logging
     logFormatter = logging.Formatter("%(message)s")
     rootLogger = logging.getLogger()
-    os.unlink(args.configfile+'.log')
-    fileHandler = logging.FileHandler(args.configfile+'.log')
+    logfile = args.configfile+'.log'
+    if os.path.exists(logfile): os.unlink(logfile)
+    fileHandler = logging.FileHandler(logfile)
     fileHandler.setFormatter(logFormatter)
     fileHandler.setLevel(logging.DEBUG)
     rootLogger.addHandler(fileHandler)

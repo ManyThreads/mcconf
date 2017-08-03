@@ -1,8 +1,3 @@
-<%!
-from mako.template import Template
-def replaceSuffix(str, osuffix, nsuffix): return str[:-len(osuffix)] + nsuffix
-%>\
-\
 % for var in files:
 ${var} = ${' '.join(sorted(files[var].keys()))}
 ${var}_OBJ = $(addsuffix .o, $(basename $(${var})))
@@ -12,29 +7,20 @@ DEP += $(addsuffix .d, $(basename $(${var})))
 DEPFLAGS += -MP -MMD -pipe
 .PHONY: all clean cleanall
 
-% for mod in modules:
-% if mod.makefile_head != None:
-${Template(mod.makefile_head).render(**context.kwargs)}
-
-% endif
-%endfor\
+${includeModules('makefile_head', context)}
 
 all: $(TARGETS)
 
-% for mod in modules:
-% if mod.makefile_body != None:
-${Template(mod.makefile_body).render(**context.kwargs)}
-% endif
-%endfor\
+${includeModules('makefile_body', context)}
 
 % for var in files:
 <% vprefix = replaceSuffix(var, "FILES", "_") %>\
   % for f in sorted(files[var].keys()):
-    % if f.endswith(".cc"): 
+    % if f.endswith(".cc"):
 ${replaceSuffix(f,".cc",".o")}: ${f}
 	$(${vprefix}CXX) $(${vprefix}CXXFLAGS) $(${vprefix}CPPFLAGS) $(DEPFLAGS) -c -o $@ $<
     % endif
-    % if f.endswith(".S"): 
+    % if f.endswith(".S"):
 ${replaceSuffix(f,".S",".o")}: ${f}
 	$(${vprefix}AS) $(${vprefix}ASFLAGS) $(${vprefix}CPPFLAGS) $(DEPFLAGS) -c -o $@ $<
     % endif
