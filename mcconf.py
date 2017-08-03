@@ -420,7 +420,7 @@ class Configuration:
                    "files": self.files, "allfiles":self.allfiles}
 
         if not os.path.exists(self.dstdir): os.makedirs(self.dstdir)
-        for mf in self.allfiles.itervalues(): mf.install(self.dstdir, tmplenv)
+        for k in self.allfiles: self.allfiles[k].install(self.dstdir, tmplenv)
 
         with open(self.dstdir + '/Makefile', 'w') as makefile:
             for var in self.files:
