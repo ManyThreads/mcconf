@@ -14,9 +14,8 @@ import shutil
 from mako.template import Template
 
 def findFiles(basedir, patterns):
-    """find files relative to a base directory according to a set of patterns.
+    """find files relative to a base directory according to a list of patterns.
     Returns a set of file names."""
-    if isinstance(patterns, basestring): patterns = [patterns]
     files = set()
     path = Path(basedir)
     for pattern in patterns:
@@ -165,7 +164,7 @@ def parseTomlModule(modulefile):
             mod = Module(name, modulefile)
             for field in fields:
                 if field.endswith('files'):
-                    mod.addFiles(field.upper(), findFiles(mod.moduledir,fields[field]))
+                    mod.addFiles(field.upper(), findFiles(mod.moduledir, fields[field]))
                 elif field == 'copy': mod.copyfiles = set(fields['copy'])
                 elif field == 'requires': mod.requires = set(fields['requires'])
                 elif field == 'provides': mod.provides = set(fields['provides'])
