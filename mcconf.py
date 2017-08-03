@@ -415,7 +415,7 @@ class Configuration:
 
     def buildFileStructure(self):
         if not os.path.exists(self.dstdir): os.makedirs(self.dstdir)
-        for mf in self.allfiles.itervalues(): mf.install(self.dstdir)
+        for k in self.allfiles: self.allfiles[k].install(self.dstdir)
 
     def generateMakefile(self):
         with open(self.dstdir + '/Makefile', 'w') as makefile:
