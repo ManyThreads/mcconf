@@ -53,7 +53,7 @@ class ModFile:
     @property
     def dependencies(self):
         """a list(string) with all C/C++ include dependencies"""
-        incrgx = re.compile('#include\\s+[<\\"]([\\w./-]+)[>\\"]')
+        incrgx = re.compile('^#include\\s+[<\\"]([\\w./-]+)[>\\"]', re.MULTILINE)
         # TODO detect the file type and choose a respective scanner instead
         # of handling all files as source files
         # TODO scan for special syntax that declares required and provided symbols for mcconf
