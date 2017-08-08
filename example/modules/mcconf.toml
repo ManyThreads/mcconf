@@ -3,7 +3,7 @@
     extrafiles = [ "mako_Makefile" ]
 
 [module.mcconf-tool]
-    extrafiles = [ "mako_mcconf.db" ]
+    extrafiles = [ "mako_mcconf.db", "mako_mcconf" ]
 
 
 [module.bochs-emu-amd64]
