@@ -1,3 +1,10 @@
 # -*- mode:toml; -*-
+[module.mcconf-makefile]
+    extrafiles = [ "mako_Makefile" ]
+
+[module.mcconf-tool]
+    extrafiles = [ "mako_mcconf.db" ]
+
+
 [module.bochs-emu-amd64]
-    extrafiles = [ "mako_bochs.rc", "mako_Makefile" ]
+    extrafiles = [ "mako_bochs.rc" ]

@@ -292,7 +292,7 @@ def replaceSuffix(str, osuffix, nsuffix):
     return str[:-len(osuffix)] + nsuffix
 
 class Configuration:
-    def __init__(self):
+    def __init__(self, conffile):
         self.moduledirs = list()
         self.provides = set()
         self.requires = set()
@@ -302,7 +302,7 @@ class Configuration:
         self.acceptedMods = set() # set of selected module objects
         self.files = dict() # dict role -> dict dstfile -> ModFile
         self.allfiles = dict() # dict dstfile -> ModFile
-        self.vars = dict()
+        self.vars = {"config_file": os.path.abspath(conffile)}
         self.modDB = ModuleDB()
 
     def applyModules(self, pendingMods):
@@ -413,6 +413,7 @@ class Configuration:
 
     def install(self):
         tmplenv = {"vars": argparse.Namespace(**self.vars), "modules": self.acceptedMods,
+                   "dstdir": os.path.abspath(self.dstdir),
                    "files": self.files, "allfiles":self.allfiles,
         }
         tmplenv['replaceSuffix'] = lambda str, osuf, nsuf: str[:-len(osuf)] + nsuf
@@ -431,7 +432,7 @@ def parseTomlConfiguration(conffile):
     with open(conffile, 'r') as fin:
         configf = toml.load(fin)
         configf = configf['config']
-        config = Configuration()
+        config = Configuration(conffile)
         for field in configf:
             if field == 'vars': config.vars.update(configf[field])
             elif field == 'moduledirs': config.moduledirs = list(configf['moduledirs'])
