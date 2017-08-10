@@ -1,15 +1,17 @@
 <%!
 import pytoml as toml
-%>
+%>\
 # vars.config_file is relative to the position of mcconf.db, ie the original dstdir
 # vars.mcconf_dir is relative to the position of mcconf.db
 # vars.dest_dir is relative to the config_file
+[vars]
 <%
-out = dict()
-out["vars"] = vars.__dict__.copy()
-out["vars"]["config_file"] = os.path.relpath(vars.config_file, dstdir)
-out["vars"]["dest_dir"] = os.path.relpath(dstdir, os.path.dirname(vars.config_file))
-out["vars"]["mcconf"] = os.path.relpath(vars.mcconf, dstdir)
-out["files"] = dict((dst,os.path.relpath(allfiles[dst].srcfile,dstdir)) for dst in allfiles)
+out = vars.__dict__.copy()
+out["config_file"] = relpath(vars.config_file)
+out["dest_dir"] = os.path.relpath(dstdir, os.path.dirname(vars.config_file))
+out["mcconf"] = relpath(vars.mcconf)
 %>\
-${toml.dumps(out)}
+${toml.dumps(out)}\
+
+[files]
+${toml.dumps(dict((dst,relpath(allfiles[dst].srcfile)) for dst in allfiles))}
