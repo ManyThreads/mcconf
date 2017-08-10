@@ -387,6 +387,7 @@ class Configuration:
                    "files": self.files, "allfiles":self.allfiles,
         }
         tmplenv['replaceSuffix'] = lambda str, osuf, nsuf: str[:-len(osuf)] + nsuf
+        tmplenv['relpath'] = lambda str: os.path.relpath(str, os.path.abspath(self.dstdir))
         def tmplIncludeModules(var, ctx):
             for mod in ctx["modules"]:
                 if var in mod.vars:
