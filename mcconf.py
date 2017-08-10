@@ -102,7 +102,8 @@ class ModFile:
                 f.write('#include "'+os.path.relpath(srcfile, tgtfile)+'"\n')
         elif self.installMode=='mako':
             with open(tgtfile, 'w') as f:
-                tmpl = mako.template.Template(filename=self.srcfile)
+                tmpl = mako.template.Template(filename=self.srcfile,
+                         imports=['import os'])
                 ctx = mako.runtime.Context(f, **tmplenv)
                 tmpl.render_context(ctx)
             shutil.copymode(srcfile, tgtfile)
@@ -116,7 +117,7 @@ class Module:
 
     Attributes:
         name       the name of the module as given in its definition.
-        modulefile the path to the file containing this definition, relative to pwd.
+        modulefile the absolute path to the file containing this definition.
         moduledir  the absolute path to the directory that contains the module,
                    used to resolve relative source files.
         dstdir     can be used to modify the destination path.
@@ -125,8 +126,8 @@ class Module:
 
     def __init__(self, name, modulefile):
         self.name = name
-        self.modulefile = modulefile # TODO should be absolute in order to change pwd after scan ?!
-        self.moduledir = os.path.dirname(os.path.abspath(self.modulefile))
+        self.modulefile = os.path.abspath(modulefile)
+        self.moduledir = os.path.dirname(self.modulefile)
         self.dstdir = ""
         self.files = dict()
         self._requires = set()
@@ -386,7 +387,7 @@ class Configuration:
         def tmplIncludeModules(var, ctx):
             for mod in ctx["modules"]:
                 if var in mod.vars:
-                    mako.template.Template(mod.vars[var]).render_context(ctx)
+                    mako.template.Template(mod.vars[var], imports=['import os']).render_context(ctx)
             return ''
         tmplenv['includeModules'] = tmplIncludeModules
 
@@ -538,6 +539,10 @@ if __name__ == '__main__':
     parser.add_argument("--nodepsolve", help = 'disables the solver', action = 'store_true')
     args = parser.parse_args()
 
+    # make destination path absolute (was relative to caller's working directory)
+    if args.destpath is not None:
+        args.destpath = os.path.abspath(args.destpath)
+    
     # configure the logging
     logFormatter = logging.Formatter("%(message)s")
     rootLogger = logging.getLogger()
@@ -560,13 +565,13 @@ if __name__ == '__main__':
     currentDir = os.getcwd()
     conffile = os.path.abspath(args.configfile)
     mcconf_file = os.path.abspath(__file__)
-    os.chdir(os.path.dirname(conffile))
+    os.chdir(os.path.dirname(conffile)) # TODO changes working directory, better work with base path arguments
     logging.info("processing configuration %s", args.configfile)
     config = parseTomlConfiguration(conffile)
     config.vars["mcconf"] = mcconf_file
 
     if args.destpath is not None:
-        config.dstdir = os.path.abspath(args.destpath)
+        config.dstdir = args.destpath
 
     if(args.check):
         config.modDB.checkConsistency()

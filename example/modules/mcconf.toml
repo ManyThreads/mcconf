@@ -6,5 +6,6 @@
     extrafiles = [ "mako_mcconf.db", "mako_mcconf" ]
 
 
+# an example
 [module.bochs-emu-amd64]
     extrafiles = [ "mako_bochs.rc" ]
