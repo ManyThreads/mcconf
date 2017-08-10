@@ -76,6 +76,9 @@ class ModFile:
             logging.warning("could not load %s from %s: %s", fpath, self.modulefile, e)
         return includes
 
+    @property
+    def isCopy(self): return self.installMode not in ["link","hardlink"]
+
     def install(self, tgtdir, tmplenv):
         """install the file into the target directory."""
         srcfile = os.path.abspath(self.srcfile)
