@@ -538,9 +538,6 @@ if __name__ == '__main__':
     parser.add_argument("--nodepsolve", help = 'disables the solver', action = 'store_true')
     args = parser.parse_args()
 
-    if args.destpath is not None:
-        args.destpath = os.path.abspath(args.destpath)
-
     # configure the logging
     logFormatter = logging.Formatter("%(message)s")
     rootLogger = logging.getLogger()
