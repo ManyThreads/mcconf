@@ -4,12 +4,15 @@ ${var}_OBJ = $(addsuffix .o, $(basename $(${var})))
 DEP += $(addsuffix .d, $(basename $(${var})))
 % endfor
 
+CONFIG_DEP = ${" ".join(set([os.path.relpath(f.module.modulefile,dstdir) for f in allfiles.values()]))}
+CONFIG_DEP += ${" ".join([os.path.relpath(f.srcfile, dstdir) for f in allfiles.values() if f.isCopy])}
+
 DEPFLAGS += -MP -MMD -pipe
 .PHONY: all clean cleanall
 
 ${includeModules('makefile_head', context)}
 
-all: $(TARGETS)
+all: Makefile $(TARGETS)
 
 ${includeModules('makefile_body', context)}
 
@@ -26,6 +29,10 @@ ${replaceSuffix(f,".S",".o")}: ${f}
     % endif
   % endfor
 % endfor
+
+.PRECIOUS: Makefile
+Makefile: ${os.path.relpath(vars.config_file, dstdir)} $(CONFIG_DEP)
+	./mcconf -r
 
 clean:
 % for var in files:

@@ -76,6 +76,9 @@ class ModFile:
             logging.warning("could not load %s from %s: %s", fpath, self.modulefile, e)
         return includes
 
+    @property
+    def isCopy(self): return self.installMode not in ["link","hardlink"]
+
     def install(self, tgtdir, tmplenv):
         """install the file into the target directory."""
         srcfile = os.path.abspath(self.srcfile)
@@ -102,9 +105,11 @@ class ModFile:
                 f.write('#include "'+os.path.relpath(srcfile, tgtfile)+'"\n')
         elif self.installMode=='mako':
             with open(tgtfile, 'w') as f:
-                tmpl = mako.template.Template(filename=self.srcfile)
+                tmpl = mako.template.Template(filename=self.srcfile,
+                         imports=['import os'])
                 ctx = mako.runtime.Context(f, **tmplenv)
                 tmpl.render_context(ctx)
+            shutil.copymode(srcfile, tgtfile)
         else: # copy the file
             shutil.copy2(srcfile, tgtfile)
 
@@ -115,7 +120,7 @@ class Module:
 
     Attributes:
         name       the name of the module as given in its definition.
-        modulefile the path to the file containing this definition, relative to pwd.
+        modulefile the absolute path to the file containing this definition.
         moduledir  the absolute path to the directory that contains the module,
                    used to resolve relative source files.
         dstdir     can be used to modify the destination path.
@@ -124,8 +129,8 @@ class Module:
 
     def __init__(self, name, modulefile):
         self.name = name
-        self.modulefile = modulefile # TODO should be absolute in order to change pwd after scan ?!
-        self.moduledir = os.path.dirname(os.path.abspath(self.modulefile))
+        self.modulefile = os.path.abspath(modulefile)
+        self.moduledir = os.path.dirname(self.modulefile)
         self.dstdir = ""
         self.files = dict()
         self._requires = set()
@@ -160,30 +165,6 @@ class Module:
         self.requiredFiles -= self.providedFiles
 
 
-def parseTomlModule(modulefile):
-    """parses a mcconf module file and returns a list(Module)."""
-    modules = list()
-    with open(modulefile, 'r') as f:
-        content = toml.load(f)
-        for name in content['module']:
-            fields = content['module'][name]
-            mod = Module(name, modulefile)
-            for field in fields:
-                if field.endswith('files'):
-                    mod.addFiles(field.upper(), findFiles(mod.moduledir, fields[field]))
-                elif field == 'copy': mod.copyfiles = set(fields['copy'])
-                elif field == 'requires': mod.addRequires(fields['requires'])
-                elif field == 'provides': mod.addProvides(fields['provides'])
-                elif field == 'modules': mod.modules = set(fields['modules'])
-                elif field == 'dstdir': mod.dstdir = fields['dstdir']
-                else: mod.vars[field] = fields[field]
-            #mod.provides.add(name) # should not require specific modules, use 'modules' instead
-            mod.finish()
-            modules.append(mod)
-    return modules
-
-
-
 class ModuleDB:
     """a collection of modules and dependency relationships."""
     def __init__(self):
@@ -192,6 +173,8 @@ class ModuleDB:
         self.requires = dict()
 
     def addModule(self, mod):
+        # TODO should be done after importing all modules
+        # in order to support overriding module definitions
         if mod.name not in self.modules:
             logging.debug('loaded %s from %s', mod.name, mod.modulefile)
             self.modules[mod.name] = mod
@@ -277,22 +260,9 @@ class ModuleDB:
                              require, str(names))
 
 
-def loadModules(moddb, paths):
-    for path in paths:
-        for f in findFiles(path, ["**/*.module", "**/mcconf.toml", "**/*.mcconf"]):
-            try:
-                for mod in parseTomlModule(os.path.join(path,f)): moddb.addModule(mod)
-            except:
-                logging.error('parsing  modulefile %s failed', f)
-                raise
-
-
-
-def replaceSuffix(str, osuffix, nsuffix):
-    return str[:-len(osuffix)] + nsuffix
 
 class Configuration:
-    def __init__(self):
+    def __init__(self, conffile):
         self.moduledirs = list()
         self.provides = set()
         self.requires = set()
@@ -302,7 +272,7 @@ class Configuration:
         self.acceptedMods = set() # set of selected module objects
         self.files = dict() # dict role -> dict dstfile -> ModFile
         self.allfiles = dict() # dict dstfile -> ModFile
-        self.vars = dict()
+        self.vars = {"config_file": os.path.abspath(conffile)}
         self.modDB = ModuleDB()
 
     def applyModules(self, pendingMods):
@@ -413,13 +383,14 @@ class Configuration:
 
     def install(self):
         tmplenv = {"vars": argparse.Namespace(**self.vars), "modules": self.acceptedMods,
+                   "dstdir": os.path.abspath(self.dstdir),
                    "files": self.files, "allfiles":self.allfiles,
         }
         tmplenv['replaceSuffix'] = lambda str, osuf, nsuf: str[:-len(osuf)] + nsuf
         def tmplIncludeModules(var, ctx):
             for mod in ctx["modules"]:
                 if var in mod.vars:
-                    mako.template.Template(mod.vars[var]).render_context(ctx)
+                    mako.template.Template(mod.vars[var], imports=['import os']).render_context(ctx)
             return ''
         tmplenv['includeModules'] = tmplIncludeModules
 
@@ -427,11 +398,43 @@ class Configuration:
         for k in self.allfiles: self.allfiles[k].install(self.dstdir, tmplenv)
 
 
+
+def parseTomlModule(modulefile):
+    """parses a mcconf module file and returns a list(Module)."""
+    modules = list()
+    with open(modulefile, 'r') as f:
+        content = toml.load(f)
+        for name in content['module']:
+            fields = content['module'][name]
+            mod = Module(name, modulefile)
+            for field in fields:
+                if field.endswith('files'):
+                    mod.addFiles(field.upper(), findFiles(mod.moduledir, fields[field]))
+                elif field == 'copy': mod.copyfiles = set(fields['copy'])
+                elif field == 'requires': mod.addRequires(fields['requires'])
+                elif field == 'provides': mod.addProvides(fields['provides'])
+                elif field == 'modules': mod.modules = set(fields['modules'])
+                elif field == 'dstdir': mod.dstdir = fields['dstdir']
+                else: mod.vars[field] = fields[field]
+            #mod.provides.add(name) # should not require specific modules, use 'modules' instead
+            mod.finish()
+            modules.append(mod)
+    return modules
+
+def loadModules(moddb, paths):
+    for path in paths:
+        for f in findFiles(path, ["**/*.module", "**/mcconf.toml", "**/*.mcconf"]):
+            try:
+                for mod in parseTomlModule(os.path.join(path,f)): moddb.addModule(mod)
+            except:
+                logging.error('parsing  modulefile %s failed', f)
+                raise
+
 def parseTomlConfiguration(conffile):
     with open(conffile, 'r') as fin:
         configf = toml.load(fin)
         configf = configf['config']
-        config = Configuration()
+        config = Configuration(conffile)
         for field in configf:
             if field == 'vars': config.vars.update(configf[field])
             elif field == 'moduledirs': config.moduledirs = list(configf['moduledirs'])
@@ -444,6 +447,7 @@ def parseTomlConfiguration(conffile):
 
 
 
+# TODO rewrite as mako template and drop pydot dependency
 def createModulesGraph(moddb):
     graph = pydot.Dot(graph_type='digraph')
     nodes = dict()
@@ -482,6 +486,7 @@ def createModulesGraph(moddb):
     graph.write('dependencies.dot')
 
 
+# TODO rewrite as mako template and drop pydot dependency
 def createConfigurationGraph(modules, selectedmods, moddb, filename):
     graph = pydot.Dot(graph_name="G", graph_type='digraph')
     nodes = dict()
@@ -537,9 +542,10 @@ if __name__ == '__main__':
     parser.add_argument("--nodepsolve", help = 'disables the solver', action = 'store_true')
     args = parser.parse_args()
 
+    # make destination path absolute (was relative to caller's working directory)
     if args.destpath is not None:
         args.destpath = os.path.abspath(args.destpath)
-
+    
     # configure the logging
     logFormatter = logging.Formatter("%(message)s")
     rootLogger = logging.getLogger()
@@ -561,9 +567,11 @@ if __name__ == '__main__':
 
     currentDir = os.getcwd()
     conffile = os.path.abspath(args.configfile)
-    os.chdir(os.path.dirname(conffile))
+    mcconf_file = os.path.abspath(__file__)
+    os.chdir(os.path.dirname(conffile)) # TODO changes working directory, better work with base path arguments
     logging.info("processing configuration %s", args.configfile)
     config = parseTomlConfiguration(conffile)
+    config.vars["mcconf"] = mcconf_file
 
     if args.destpath is not None:
         config.dstdir = args.destpath

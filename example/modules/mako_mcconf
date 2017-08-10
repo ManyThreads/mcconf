@@ -1,0 +1,32 @@
+#!/usr/bin/python
+import sys
+import os
+mcconf = "${os.path.relpath(vars.mcconf,dstdir)}"
+sys.path.insert(0, os.path.join(os.path.dirname(mcconf),"python-libs"))
+import pytoml as toml
+import argparse
+
+os.chdir(os.path.dirname(__file__))
+
+parser = argparse.ArgumentParser()
+parser.add_argument('-r', '--reconf', action = 'store_true')
+parser.add_argument('-f', '--find')
+args = parser.parse_args()
+
+with open("mcconf.db", 'r') as fin:
+    data = toml.load(fin)
+
+if args.find:
+    if args.find in data["files"]:
+        sys.stdout.write(data["files"][args.find]+"\n")
+
+elif args.reconf:
+    # delete all generated files
+    for f in data["files"]:
+        if f != "mcconf" and f != "mcconf.db" and (os.path.exists(f) or os.path.islink(f)):
+            os.unlink(f)
+
+    # rerun mcconf
+    cmd = mcconf+" -i "+data["vars"]["config_file"]+" -d ."
+    sys.stderr.write('running command: '+cmd+"\n")
+    os.system(cmd)
