@@ -9,11 +9,6 @@
 ## Diagnostics
 
 * highlight included modules of the configuration in the global dot graph 
-* --find to find which modules provide this file and where these
-  variants can be found.
-* Output a human readable text file (TOML and XML) of the module
-  database including all automatically extracted information.
-  Could be done via a mako template.
 * Find all cycles in the dependency graph and report these. Dependency
   cycles are an indicator for bad design and prevent reuse.
 
@@ -35,14 +30,3 @@
 	* https://pypi.python.org/pypi/logilab-constraint/0.5.0
 	* http://pyeda.readthedocs.org/en/latest/sudoku.html
 	* https://pypi.python.org/pypi/pycosat
-
-## Semantics
-
-* Should destdir in the config file be relative to the config file or
-  relative to the current working directory when calling mcconf?
-  Relative to the config file is consistent with all other file
-  references. A path relative to the current working directory can
-  always be supplied via the command line.
-* Are the moduledirs search pathes relative to the config file or
-  relative to the current working directory?
-  They should be relative to the config file.
