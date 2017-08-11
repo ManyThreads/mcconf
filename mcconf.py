@@ -1,7 +1,8 @@
 #!/usr/bin/python
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(sys.argv[0]), "./python-libs"))
+mcconf_dir = os.path.abspath(os.path.dirname(__file__)) #os.path.dirname(sys.argv[0])
+sys.path.insert(0, os.path.join(mcconf_dir, "python-libs"))
 import pytoml as toml
 from pathlib2 import Path
 import logging
@@ -422,8 +423,10 @@ def parseTomlModule(modulefile):
             modules.append(mod)
     return modules
 
-def loadModules(moddb, paths):
+def loadModules(moddb, basedir, paths):
     for path in paths:
+        path = os.path.join(basedir, path)
+        logging.info("searching modules in %s", path)
         for f in findFiles(path, ["**/*.module", "**/mcconf.toml", "**/*.mcconf"]):
             try:
                 for mod in parseTomlModule(os.path.join(path,f)): moddb.addModule(mod)
@@ -432,18 +435,21 @@ def loadModules(moddb, paths):
                 raise
 
 def parseTomlConfiguration(conffile):
+    logging.info("processing configuration %s", conffile)
     with open(conffile, 'r') as fin:
         configf = toml.load(fin)
         configf = configf['config']
         config = Configuration(conffile)
+        config.moduledirs.append(os.path.join(mcconf_dir, "stdmodules"))
         for field in configf:
             if field == 'vars': config.vars.update(configf[field])
-            elif field == 'moduledirs': config.moduledirs = list(configf['moduledirs'])
+            elif field == 'moduledirs': config.moduledirs.extend(configf['moduledirs'])
             elif field == 'requires': config.requires.update(configf['requires'])
             elif field == 'provides': config.provides.update(configf['provides'])
             elif field == 'modules': config.modules.update(configf['modules'])
-            elif field == 'destdir': config.dstdir = os.path.abspath(configf['destdir'])
-        loadModules(config.modDB, config.moduledirs)
+            elif field == 'destdir':
+                config.dstdir = os.path.join(os.path.dirname(conffile), configf['destdir'])
+        loadModules(config.modDB, os.path.dirname(conffile), config.moduledirs)
         return config
 
 
@@ -566,13 +572,9 @@ if __name__ == '__main__':
     rootLogger.addHandler(consoleHandler)
     rootLogger.setLevel(logging.DEBUG)
 
-    currentDir = os.getcwd()
-    conffile = os.path.abspath(args.configfile)
-    mcconf_file = os.path.abspath(__file__)
-    os.chdir(os.path.dirname(conffile)) # TODO changes working directory, better work with base path arguments
-    logging.info("processing configuration %s", args.configfile)
-    config = parseTomlConfiguration(conffile)
-    config.vars["mcconf"] = mcconf_file
+    args.configfile = os.path.abspath(args.configfile)
+    config = parseTomlConfiguration(args.configfile)
+    config.vars["mcconf"] = os.path.abspath(sys.argv[0])
 
     if args.destpath is not None:
         config.dstdir = args.destpath
