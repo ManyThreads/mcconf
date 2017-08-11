@@ -1,0 +1,3 @@
+# -*- mode:toml; -*-
+[module.mcconf-makefile]
+    extrafiles = [ "mako_Makefile", "mako_mcconf.db", "mako_mcconf" ]
