@@ -1,0 +1,13 @@
+# -*- mode:toml; -*-
+
+[module.reg1]
+    global_reg = [1]
+
+[module.reg2]
+    global_reg = [2]
+
+[module.reg3]
+    global_reg = [3]
+
+[module.print_reg]
+    extrafiles=["mako_reg.txt"]
