@@ -1,8 +1,10 @@
 #!/usr/bin/python
 import sys
 import os
-mcconf_dir = os.path.abspath(os.path.dirname(__file__)) #os.path.dirname(sys.argv[0])
-sys.path.insert(0, os.path.join(mcconf_dir, "python-libs"))
+mcconf_dir = os.path.dirname(sys.argv[0]) # instead of __file__ this should also work for compiled script
+activate_this = os.path.join(mcconf_dir, 'env/bin/activate_this.py')
+execfile(activate_this, dict(__file__=activate_this))
+
 import pytoml as toml
 from pathlib2 import Path
 import logging
