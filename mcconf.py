@@ -188,7 +188,7 @@ class ModuleDB:
         else:
             logging.warning('ignoring duplicate module %s from %s and %s',
                             mod.name, mod.modulefile,
-                            self.modules[mod.name].filename)
+                            self.modules[mod.name].modulefile)
 
     def __getitem__(self,index):
         return self.modules[index]
