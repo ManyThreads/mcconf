@@ -31,7 +31,7 @@ In order to generate a build configuration, supply mcconf with a
 which modules are desired. If nothing is specified, the file
 project.config will be read.
 
-	mcconf.py -i myproj.config
+	$MCDIR/mcconf -i myproj.config
 
 A couple of additional flags are available for diagnostics:
 * --check runs a sanity check accross the module descriptions and reports potential problems

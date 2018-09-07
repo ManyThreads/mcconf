@@ -1,0 +1,5 @@
+#!/bin/sh
+
+BASEDIR=`dirname $0`
+# not needed . "$BASEDIR/env/bin/activate"
+exec "$BASEDIR/mcconf.py" $*

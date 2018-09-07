@@ -1,11 +1,14 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 import sys
 import os
-mcconf_dir = os.path.dirname(sys.argv[0]) # instead of __file__ this should also work for compiled script
+
+# used to access the mcconf default files
+mcconf_dir = os.path.dirname(sys.argv[0])
+
 activate_this = os.path.join(mcconf_dir, 'env/bin/activate_this.py')
 execfile(activate_this, dict(__file__=activate_this))
 
-import pytoml as toml
+import toml
 from pathlib2 import Path
 import logging
 import argparse
