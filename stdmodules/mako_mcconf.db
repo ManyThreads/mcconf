@@ -1,5 +1,5 @@
 <%!
-import pytoml as toml
+import toml
 %>\
 # vars.config_file is relative to the position of mcconf.db, ie the original dstdir
 # vars.mcconf_dir is relative to the position of mcconf.db
