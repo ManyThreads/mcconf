@@ -5,9 +5,6 @@ import os
 # used to access the mcconf default files
 mcconf_dir = os.path.dirname(sys.argv[0])
 
-activate_this = os.path.join(mcconf_dir, 'env/bin/activate_this.py')
-execfile(activate_this, dict(__file__=activate_this))
-
 import toml
 from pathlib2 import Path
 import logging

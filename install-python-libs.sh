@@ -1,9 +1,9 @@
-#!/bin/bash
+#!/bin/sh
 
-pushd `dirname $0` > /dev/null
+cd `dirname $0`
 
 virtualenv env
-source env/bin/activate
+. env/bin/activate
 
 pip install pydot
 pip install pydotplus
@@ -12,5 +12,3 @@ pip install mako
 pip install argparse
 pip install pyparsing
 pip install pathlib2
-
-popd > /dev/null
