@@ -15,6 +15,47 @@ import pydot
 import shutil
 import mako.template
 import mako.runtime
+import copy
+
+
+def merge_list(varA, varB):
+    result = copy.copy(varA)
+    result.extend(varB)
+    logging.warning("Merge list: %s and %s = %s", varA, varB, result)
+    return True, result
+
+def merge_dict(varA, varB):
+    logging.warning("Merge dict: %s and %s", varA, varB)
+    setA = set(varA.keys())
+    setB = set(varB.keys())
+    result = dict()
+    for key in (setB.intersection(setA)):
+        success,merged = merge_variable(varA[key], varB[key])
+        if success:
+            result[key] = merged
+        else:
+            return False, None
+    for key in (setA.difference(setB)):
+        result[key] = varA[key];
+    for key in (setB.difference(setA)):
+        result[key] = varB[key];
+    return True, result;
+
+def merge_variable(varA, varB):
+    logging.warning("Merge: %s and %s", varA, varB)
+    if varA is None:
+        return True,varB
+    elif varB is None:
+        return True,varA
+    if type(varA) != type(varB):
+        logging.warning("Can not merge variables with different types: %s and %s", type(varA), type(varB))
+        return False, None
+    if type(varA) == dict:
+        return merge_dict(varA, varB)
+    if type(varA) == list:
+        return merge_list(varA, varB)
+    logging.warning("Can only merge dictionaries and lists.")
+    return False, None
 
 def findFiles(basedir, patterns):
     """find files relative to a base directory according to a list of patterns.
@@ -141,6 +182,7 @@ class Module:
         self.modules = set()
         self.copyfiles = set()
         self.vars = dict() # all unknown fields from the configuration
+        self.globalVars = dict() # all global variables
         self.providedFiles = set()
         self.requiredFiles = set()
 
@@ -276,6 +318,7 @@ class Configuration:
         self.files = dict() # dict role -> dict dstfile -> ModFile
         self.allfiles = dict() # dict dstfile -> ModFile
         self.vars = {"config_file": os.path.abspath(conffile)}
+        self.globalVars = dict() # global variables from modules
         self.modDB = ModuleDB()
 
     def applyModules(self, pendingMods):
@@ -306,6 +349,14 @@ class Configuration:
             #     # TODO add more diagnostigs: which tags/files do conflict?
             #     cnames = [m.name for m in (conflicts|set(mod))]
             #     logging.warning("selected conflicting modules: "+cnames)
+            # 4. merge global variables
+            merged,globalVars = merge_variable(self.globalVars, mod.globalVars)
+            if not merged:
+                logging.warning("requested module %s global variables conflicts", mod.name);
+                raise Exception("requested module " + modname +
+                        " conflicts with previously selected modules")
+            else:
+                self.globalVars = globalVars
 
             logging.debug('selecting module %s', mod.name)
             self.acceptedMods.add(mod)
@@ -385,6 +436,7 @@ class Configuration:
                          str(removable))
 
     def install(self):
+        self.vars.update(self.globalVars)
         tmplenv = {"vars": argparse.Namespace(**self.vars), "modules": self.acceptedMods,
                    "dstdir": os.path.abspath(self.dstdir),
                    "files": self.files, "allfiles":self.allfiles,
@@ -419,6 +471,7 @@ def parseTomlModule(modulefile):
                 elif field == 'provides': mod.addProvides(fields['provides'])
                 elif field == 'modules': mod.modules = set(fields['modules'])
                 elif field == 'dstdir': mod.dstdir = fields['dstdir']
+                elif field.startswith("global_"): mod.globalVars[field] = fields[field]
                 else: mod.vars[field] = fields[field]
             #mod.provides.add(name) # should not require specific modules, use 'modules' instead
             mod.finish()
@@ -554,7 +607,7 @@ if __name__ == '__main__':
     # make destination path absolute (was relative to caller's working directory)
     if args.destpath is not None:
         args.destpath = os.path.abspath(args.destpath)
-    
+
     # configure the logging
     logFormatter = logging.Formatter("%(message)s")
     rootLogger = logging.getLogger()
