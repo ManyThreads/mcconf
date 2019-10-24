@@ -355,7 +355,9 @@ class Configuration:
                 mod = solutions.pop()
                 # 2) ignore if conflict with already selected modules
                 conflicts = self.provides & mod.provides
-                if conflicts: continue
+                if conflicts:
+                    logging.debug('Dropped dependency %s to %s because of conflicting provides %s', tag, mod.name, conflicts)
+                    continue
                 # select the module
                 logging.debug('Satisfy dependency %s with module %s', tag, mod.name)
                 additionalMods.add(mod)
