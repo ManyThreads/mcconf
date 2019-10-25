@@ -351,12 +351,17 @@ class Configuration:
             for tag in missingRequires:
                 solutions = self.modDB.getResolvableProvides(tag, self.provides).copy()
                 # 1) ignore if none or multiple solutions
-                if len(solutions) != 1: continue
+                if len(solutions) < 1:
+                    logging.debug('Dropped dependency %s with no possible resolutions', tag)
+                    continue
+                if len(solutions) > 1:
+                    logging.debug('Dropped dependency %s with possible resolutions %s', tag, solutions)
+                    continue
                 mod = solutions.pop()
                 # 2) ignore if conflict with already selected modules
                 conflicts = self.provides & mod.provides
                 if conflicts:
-                    logging.debug('Dropped dependency %s to %s because of conflicting provides %s', tag, mod.name, conflicts)
+                    logging.debug('Dropped dependency  %s to %s because of a conflict with already selected modules providing %s', tag, mod.name, conflicts)
                     continue
                 # select the module
                 logging.debug('Satisfy dependency %s with module %s', tag, mod.name)
