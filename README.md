@@ -127,7 +127,7 @@ makefile_body = '''
 The field `noauto = true` can be used to prevent automatic selection of the module during dependency resolution.
 Such modules are useful to provide a set of platform and architecture specific pseudo-symbols (aka tags) in order
 to be reused across multiple configurations.
-Without `noauto`, our simple dependency resolution fails with ambiguous resultion candidates.
+Without `noauto`, our simple dependency resolution fails with ambiguous resolution candidates.
 This is caused because it would consider all candidate modules just because one of these configuration
 helper modules could in theory satisfy the needed acrhitecture or platform dependency.
 
