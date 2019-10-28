@@ -349,17 +349,27 @@ class Configuration:
         while count:
             count = 0
             for tag in missingRequires:
-                solutions = self.modDB.getResolvableProvides(tag, self.provides).copy()
-                # 1) ignore if none or multiple solutions
-                if len(solutions) != 1: continue
-                mod = solutions.pop()
-                # 2) ignore if conflict with already selected modules
-                conflicts = self.provides & mod.provides
-                if conflicts:
-                    logging.debug('Dropped dependency %s to %s because of conflicting provides %s', tag, mod.name, conflicts)
+                solutions = self.modDB.getResolvableProvides(tag, self.provides)
+
+                # 1) ignore modules that have conflicts already
+                good_solutions = set()
+                for mod in solutions:
+                    conflicts = self.provides & mod.provides
+                    if conflicts:
+                        logging.debug('Ignoring module %s for dependency %s because of conflicts with already selected modules providing %s',
+                            mod.name, tag, conflicts)
+                    else:
+                        good_solutions.add(mod)
+
+                # 2) ignore if none or multiple solutions
+                if len(good_solutions) != 1:
+                    logging.debug('Cannot satisfy dependency %s because of none of ambiguous candidate modules %s',
+                        tag, [mod.name for mod in good_solutions])
                     continue
-                # select the module
-                logging.debug('Satisfy dependency %s with module %s', tag, mod.name)
+                mod = good_solutions.pop()
+
+                # 3) select the module
+                logging.debug('Selecting module %s for dependency %s', mod.name, tag)
                 additionalMods.add(mod)
                 count += 1
                 self.applyModules(set([mod.name]))
