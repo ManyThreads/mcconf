@@ -143,6 +143,7 @@ class Module:
         self.vars = dict() # all unknown fields from the configuration
         self.providedFiles = set()
         self.requiredFiles = set()
+        self.noauto = False
 
     def __repr__(self): return self.name
 
@@ -176,21 +177,28 @@ class ModuleDB:
         self.requires = dict()
 
     def addModule(self, mod):
+        """Add a module to the database and extend the dependency tables."""
         # TODO should be done after importing all modules
         # in order to support overriding module definitions
-        if mod.name not in self.modules:
-            logging.debug('loaded %s from %s', mod.name, mod.modulefile)
-            self.modules[mod.name] = mod
-            for tag in mod.provides: # this tag is provided by that module
-                if tag not in self.provides: self.provides[tag] = set()
-                self.provides[tag].add(mod)
-            for tag in mod.requires: # this tag is required by that module
-                if tag not in self.requires: self.requires[tag] = set()
-                self.requires[tag].add(mod)
-        else:
+        if mod.name in self.modules:
             logging.warning('ignoring duplicate module %s from %s and %s',
                             mod.name, mod.modulefile,
                             self.modules[mod.name].modulefile)
+            return
+
+        logging.debug('loaded %s from %s', mod.name, mod.modulefile)
+        self.modules[mod.name] = mod
+
+        # this module can be loaded automatically to solve following depedencies
+        if not mod.noauto:
+            for tag in mod.provides:
+                if tag not in self.provides: self.provides[tag] = set()
+                self.provides[tag].add(mod)
+
+        # this module requires following dependencies in order to be useable
+        for tag in mod.requires:
+            if tag not in self.requires: self.requires[tag] = set()
+            self.requires[tag].add(mod)
 
     def __getitem__(self,index):
         return self.modules[index]
@@ -205,10 +213,10 @@ class ModuleDB:
         return self.provides[tag]
 
     def isResolvable(self, mod, provided):
-        """ Test whether there is a chance that the dependency are resolvable. """
+        """ Test whether there is a chance that the dependencies of a module are resolvable. """
         for req in mod.requires:
             if not (req in provided or len(self.getProvides(req))):
-                logging.warning('Discarded module %s because of unresolvable dependency on %s', mod.name, req)
+                logging.debug('Ignoring module %s because of unresolvable dependency on %s', mod.name, req)
                 return False
         return True
 
@@ -307,7 +315,6 @@ class Configuration:
             #     cnames = [m.name for m in (conflicts|set(mod))]
             #     logging.warning("selected conflicting modules: "+cnames)
 
-            logging.debug('selecting module %s', mod.name)
             self.acceptedMods.add(mod)
             pendingMods |= mod.modules
             self.requires |= mod.requires
@@ -357,23 +364,29 @@ class Configuration:
                     conflicts = self.provides & mod.provides
                     if conflicts:
                         logging.debug('Ignoring module %s for dependency %s because of conflicts with already selected modules providing %s',
-                            mod.name, tag, conflicts)
+                            mod.name, tag, [str(c) for c in conflicts])
                     else:
                         good_solutions.add(mod)
 
                 # 2) ignore if none or multiple solutions
-                if len(good_solutions) != 1:
-                    logging.debug('Cannot satisfy dependency %s because of none of ambiguous candidate modules %s',
+                if len(good_solutions) < 1:
+                    logging.debug('Did not satisfy dependency %s because of no possible solution.',
+                        tag)
+                    continue
+                elif len(good_solutions) > 1:
+                    logging.debug('Did not satisfy dependency %s because of ambiguous solutions %s',
                         tag, [mod.name for mod in good_solutions])
                     continue
-                mod = good_solutions.pop()
 
                 # 3) select the module
+                mod = good_solutions.pop()
                 logging.debug('Selecting module %s for dependency %s', mod.name, tag)
                 additionalMods.add(mod)
                 count += 1
                 self.applyModules(set([mod.name]))
                 missingRequires = self.getMissingRequires()
+                break
+
         # return set of additionally selected modules
         return additionalMods
 
@@ -431,6 +444,7 @@ def parseTomlModule(modulefile):
                 elif field == 'provides': mod.addProvides(fields['provides'])
                 elif field == 'modules': mod.modules = set(fields['modules'])
                 elif field == 'dstdir': mod.dstdir = fields['dstdir']
+                elif field == 'noauto': mod.noauto = bool(fields['noauto'])
                 else: mod.vars[field] = fields[field]
             #mod.provides.add(name) # should not require specific modules, use 'modules' instead
             mod.finish()

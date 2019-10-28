@@ -122,10 +122,20 @@ makefile_body = '''
 '''		
 ~~~~
 
+### Modules as configuration helpers
+
+The field `noauto = true` can be used to prevent automatic selection of the module during dependency resolution.
+Such modules are useful to provide a set of platform and architecture specific pseudo-symbols (aka tags) in order
+to be reused across multiple configurations.
+Without `noauto`, our simple dependency resolution fails with ambiguous resultion candidates.
+This is caused because it would consider all candidate modules just because one of these configuration
+helper modules could in theory satisfy the needed acrhitecture or platform dependency.
+
+
 ## Details of the Configuration Process
 
 * first, the module search path is processed for module files and all are parsed. The configuration tool should check for duplicate module names and report respective warnings. The path to the module file is added to the in-memory module description in order to find the referenced files later.
-* the requested modules descriptions are combined into lists of source and include files with pairs of source and target path. The requires and provides are combined as well. The configuration tool should check for duplicate files and provided pseudo modules and report respective warnings.
+* the requested modules descriptions are combined into lists of source and include files with pairs of source and target path. The requires and provides are combined as well. The configuration tool checks for duplicate files and provided pseudo modules and report respective warnings.
 * after all modules are combined, the list of still required modules and pseudo modules should be empty. Otherwise, a warning should be reported for each missing module, including a list of suggested modules that would satisfy this dependency.
 * the include and source files are copied to the configuration destination using symbolic links and the intermediate directories are created as needed.
 * finally, a makefile is generated based on generic make rules and a list of kernel object files. the 
