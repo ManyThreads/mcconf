@@ -1,0 +1,24 @@
+[
+% for var in files:
+<% vprefix = replaceSuffix(var, "FILES", "_") %>\
+  % for f in sorted(files[var].keys()):
+    % if f.endswith(".cc"):
+  {
+    "directory": "${dstdir}",
+    "command": "$(${vprefix}CXX) $(${vprefix}CXXFLAGS) $(${vprefix}CPPFLAGS) $(DEPFLAGS) -c -o ${replaceSuffix(f,".cc",".o")} ${f}",
+    "file": "${f}",
+    "output": "${replaceSuffix(f,".cc",".o")}"
+  }
+    % endif
+    % if f.endswith(".S"):
+  {
+    "directory": "${dstdir}",
+    "command": "$(${vprefix}AS) $(${vprefix}ASFLAGS) $(${vprefix}CPPFLAGS) $(DEPFLAGS) -c -o ${replaceSuffix(f,".S",".o")} ${f}",
+    "file": "${f}",
+    "output": "${replaceSuffix(f,".S",".o")}"
+  }
+    % endif
+  % endfor
+% endfor
+]
+
