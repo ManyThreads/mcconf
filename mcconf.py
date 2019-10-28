@@ -417,9 +417,11 @@ class Configuration:
         tmplenv['replaceSuffix'] = lambda str, osuf, nsuf: str[:-len(osuf)] + nsuf
         tmplenv['relpath'] = lambda str: os.path.relpath(str, os.path.abspath(self.dstdir))
         def tmplIncludeModules(var, ctx):
-            for mod in ctx["modules"]:
+            for mod in sorted(ctx["modules"],key=lambda x:x.name):
                 if var in mod.vars:
+                    ctx.write("#--- "+var+" from module "+mod.name+"\n")
                     mako.template.Template(mod.vars[var], imports=['import os']).render_context(ctx)
+                    ctx.write("#--- end module "+mod.name+"\n\n")
             return ''
         tmplenv['includeModules'] = tmplIncludeModules
 
