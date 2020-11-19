@@ -28,6 +28,10 @@ ${replaceSuffix(f,".cc",".o")}: ${f}
 ${replaceSuffix(f,".S",".o")}: ${f}
 	$(${vprefix}AS) $(${vprefix}ASFLAGS) $(${vprefix}CPPFLAGS) $(DEPFLAGS) -c -o $@ $<
     % endif
+    % if f.endswith(".c"):
+${replaceSuffix(f,".c",".o")}: ${f}
+	$(${vprefix}CC) $(${vprefix}CFLAGS) $(${vprefix}CPPFLAGS) $(DEPFLAGS) -c -o $@ $<
+    % endif
   % endfor
 % endfor
 
